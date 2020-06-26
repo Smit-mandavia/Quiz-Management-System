@@ -6,6 +6,9 @@ from django.dispatch import receiver
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 
+from qms import settings
+
+
 import uuid
 
 
@@ -57,6 +60,8 @@ class Quiz(models.Model):
     def save(self, *args, **kwargs):
         if self.pk==None:
             self.uuid = get_uuid()
+        super(Quiz, self).save(*args, **kwargs)
+
         if self._score != self.score :
             self._score = self.score
 
@@ -122,6 +127,7 @@ class MCQ(Question):
 
         if self.pk==None:
             self.uuid = get_uuid()
+            super(MCQ, self).save(*args, **kwargs)
             if self.visible:
                 self.quiz._sum_score += self.score - self._score
                 self.quiz.save()
@@ -129,6 +135,7 @@ class MCQ(Question):
             else:
                 self._visible = False
         else:
+            super(MCQ, self).save(*args, **kwargs)
             if self.visible != self._visible:
 
                 if self.visible==True:
@@ -227,11 +234,13 @@ class Open_Text_Question(Question):
 
         if self.pk==None:
             self.uuid = get_uuid()
+            super(Open_Text_Question, self).save(*args, **kwargs)
             if self.visible:
                 self.quiz._sum_score += self.score - self._score
                 self.quiz.save()
                 self._score = self.score
         else:
+            super(Open_Text_Question, self).save(*args, **kwargs)
             if self.visible != self._visible:
                 if self.visible==True:
                     self.quiz._sum_score += self._score
@@ -269,13 +278,8 @@ pre_delete.connect(question_delete, sender=Open_Text_Question)
 class Answer_Open_Text_Question(models.Model):
 
     uuid = models.CharField(max_length=100,default = "", editable=False)
-    open_text_question = models.ForeignKey(Open_Text_Question, on_delete=models.CASCADE)
+    open_text_question = models.ManyToManyField(Open_Text_Question)
     answer = models.CharField(max_length=1000)
-
-    class Meta:
-        constraints = [
-            UniqueConstraint(fields=['open_text_question', 'answer'], name='unique answer OTQ'),
-        ]
 
     def __str__(self):
         return self.uuid
@@ -373,7 +377,10 @@ class Attempt_MCQ(Attempt_Question):
 
     def save(self, *args, **kwargs):
         if self.pk==None:
+            if len(Attempt_MCQ.objects.filter(attempt_quiz = self.attempt_quiz, question = self.question )) >0:
+                raise Exception("Unique constraint failed")
             self.uuid = get_uuid()
+
         if self.question._visible:
             if self.visible != self._visible:
                 if self.visible == True:
@@ -402,15 +409,18 @@ class Attempt_Open_Text_Question(Attempt_Question):
 
     question = models.ForeignKey(Open_Text_Question, on_delete=models.CASCADE)
 
-    constraints = [
-        UniqueConstraint(fields=['attempt_quiz', 'question'], name='User can attemp each OTQ in a quiz at most once'),
-    ]
+    class Meta:
+        constraints = [
+            UniqueConstraint(fields=['attempt_quiz', 'question'], name='User can attemp each OTQ in a quiz at most once'),
+        ]
 
     def __str__(self):
         return self.uuid
 
     def save(self, *args, **kwargs):
         if self.pk==None:
+            if len(Attempt_Open_Text_Question.objects.filter(attempt_quiz = self.attempt_quiz, question = self.question )) >0:
+                raise Exception("Unique constraint failed")
             self.uuid = get_uuid()
 
         if self.question._visible:
